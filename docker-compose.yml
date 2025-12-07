@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "5000:5000"
+    environment:
+      - AWS_REGION=us-east-1
+      - DYNAMODB_SERVICES_TABLE=Services
+      - DYNAMODB_CHECKS_TABLE=HealthChecks
+      - DYNAMODB_ALERTS_TABLE=Alerts
+      - AWS_ENDPOINT_URL=http://dynamodb:8000
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - dynamodb
+    profiles:
+      - local
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:5000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    profiles:
+      - local
+
+  dynamodb:
+    image: amazon/dynamodb-local:latest
+    ports:
+      - "8000:8000"
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-inMemory"]
+    profiles:
+      - local
