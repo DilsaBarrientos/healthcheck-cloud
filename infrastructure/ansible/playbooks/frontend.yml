@@ -1,0 +1,113 @@
+---
+- name: Build y Desplegar Frontend a S3
+  hosts: localhost
+  connection: local
+  vars:
+    terraform_dir: "../terraform"
+    frontend_dir: "../../frontend"
+
+  tasks:
+    - name: Verificar que terraform-outputs.json existe
+      stat:
+        path: "{{ terraform_dir }}/terraform-outputs.json"
+      register: outputs_file
+
+    - name: Generar terraform-outputs.json si no existe
+      command: terraform output -json
+      args:
+        chdir: "{{ terraform_dir }}"
+      register: terraform_outputs
+      when: not outputs_file.stat.exists
+      changed_when: false
+
+    - name: Guardar outputs en archivo
+      copy:
+        content: "{{ terraform_outputs.stdout }}"
+        dest: "{{ terraform_dir }}/terraform-outputs.json"
+      when: not outputs_file.stat.exists
+
+    - name: Leer valores de outputs
+      set_fact:
+        terraform_outputs_json: "{{ lookup('file', terraform_dir + '/terraform-outputs.json') | from_json }}"
+
+    - name: Extraer valores de outputs
+      set_fact:
+        s3_bucket: "{{ terraform_outputs_json.s3_bucket_name.value }}"
+        api_gateway_url: "{{ terraform_outputs_json.api_gateway_url.value }}"
+
+    - name: Verificar que npm está instalado
+      command: npm --version
+      register: npm_check
+      changed_when: false
+      failed_when: false
+
+    - name: Instalar Node.js y npm si no están instalados
+      block:
+        - name: Instalar Node.js (Ubuntu/Debian)
+          apt:
+            name: nodejs npm
+            state: present
+          when: ansible_os_family == "Debian"
+        - name: Instalar Node.js (RedHat/CentOS)
+          yum:
+            name: nodejs npm
+            state: present
+          when: ansible_os_family == "RedHat"
+      when: npm_check.rc != 0
+
+    - name: Crear archivo .env.production
+      copy:
+        content: |
+          REACT_APP_API_URL={{ api_gateway_url }}
+        dest: "{{ frontend_dir }}/.env.production"
+
+    - name: Limpiar node_modules si hay problemas de permisos
+      file:
+        path: "{{ frontend_dir }}/node_modules"
+        state: absent
+      when: ansible_check_mode == false
+      ignore_errors: yes
+
+    - name: Instalar dependencias de Node.js
+      command: npm install
+      args:
+        chdir: "{{ frontend_dir }}"
+      environment:
+        NODE_ENV: production
+
+    - name: Ejecutar build del frontend
+      command: npm run build
+      args:
+        chdir: "{{ frontend_dir }}"
+      environment:
+        NODE_ENV: production
+        REACT_APP_API_URL: "{{ api_gateway_url }}"
+
+    - name: Verificar que AWS CLI está instalado
+      command: aws --version
+      register: aws_check
+      changed_when: false
+      failed_when: false
+
+    - name: Instalar AWS CLI si no está instalado
+      block:
+        - name: Instalar AWS CLI (pip)
+          pip:
+            name: awscli
+            state: present
+      when: aws_check.rc != 0
+
+    - name: Sincronizar build con S3
+      command: >
+        aws s3 sync {{ frontend_dir }}/build/
+        s3://{{ s3_bucket }}/
+        --delete
+        --region us-east-1
+
+    - name: Mostrar URL del frontend
+      debug:
+        msg: |
+          Frontend desplegado exitosamente!
+          URL: http://{{ s3_bucket }}.s3-website-us-east-1.amazonaws.com
+          API Gateway: {{ api_gateway_url }}
+

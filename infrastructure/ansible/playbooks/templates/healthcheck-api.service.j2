@@ -1,0 +1,22 @@
+[Unit]
+Description=HealthCheck Cloud API
+After=network.target
+
+[Service]
+Type=simple
+User={{ app_user }}
+WorkingDirectory={{ app_dir }}
+Environment="AWS_REGION={{ aws_region }}"
+Environment="DYNAMODB_SERVICES_TABLE=Services"
+Environment="DYNAMODB_CHECKS_TABLE=HealthChecks"
+Environment="DYNAMODB_ALERTS_TABLE=Alerts"
+Environment="FLASK_ENV=production"
+Environment="PORT=5000"
+Environment="HOST=0.0.0.0"
+ExecStart=/usr/bin/python3 {{ app_dir }}/app.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+

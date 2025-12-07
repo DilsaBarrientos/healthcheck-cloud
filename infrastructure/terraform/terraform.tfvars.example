@@ -1,0 +1,28 @@
+# ============================================
+# Variables de Configuración AWS
+# ============================================
+# Copia este archivo a terraform.tfvars y completa los valores requeridos
+# cp terraform.tfvars.example terraform.tfvars
+
+# Región de AWS donde se desplegarán los recursos
+aws_region = "us-east-1"
+
+# Nombre del proyecto (se usará para nombrar recursos)
+project_name = "healthcheck-cloud"
+
+# CIDR block para la VPC (opcional, tiene default)
+vpc_cidr = "10.0.0.0/16"
+
+# ============================================
+# VARIABLES REQUERIDAS - DEBES CONFIGURARLAS
+# ============================================
+
+# Nombre del Key Pair de EC2 que ya tienes creado en AWS
+# IMPORTANTE: Debes crear este Key Pair en AWS Console antes de ejecutar Terraform
+# AWS Console > EC2 > Key Pairs > Create key pair
+# O usa uno existente. Lista tus Key Pairs con: aws ec2 describe-key-pairs --region us-east-1
+ec2_key_name = "devops-key"  # Cambia esto por uno de tus Key Pairs existentes
+
+# Email para recibir alertas SNS cuando un servicio esté caído
+alert_email = "dilsabarrientos@gmail.com"
+
