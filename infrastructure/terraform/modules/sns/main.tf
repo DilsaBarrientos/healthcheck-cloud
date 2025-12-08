@@ -12,3 +12,4 @@ resource "aws_sns_topic_subscription" "email" {
   endpoint  = var.email
 }
 
+

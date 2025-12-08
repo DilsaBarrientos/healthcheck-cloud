@@ -33,3 +33,13 @@ output "lambda_functions" {
   value       = module.lambda.function_names
 }
 
+output "cloudwatch_dashboard_url" {
+  description = "URL del dashboard de CloudWatch"
+  value       = module.cloudwatch.dashboard_url
+}
+
+output "cloudwatch_dashboard_name" {
+  description = "Nombre del dashboard de CloudWatch"
+  value       = module.cloudwatch.dashboard_name
+}
+

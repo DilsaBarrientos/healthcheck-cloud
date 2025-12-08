@@ -52,3 +52,4 @@ def get_service_uptime(service_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+

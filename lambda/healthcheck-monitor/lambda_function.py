@@ -9,14 +9,17 @@ import urllib.request
 import time
 from datetime import datetime
 from typing import Dict, Any, List
+from decimal import Decimal
+import os
 
 dynamodb = boto3.resource('dynamodb')
 sns = boto3.client('sns')
 
-SERVICES_TABLE = 'Services'
-CHECKS_TABLE = 'HealthChecks'
-ALERTS_TABLE = 'Alerts'
-SNS_TOPIC_ARN = 'arn:aws:sns:region:account:healthcheck-alerts'  # Actualizar con tu ARN
+# Obtener nombres de tablas desde variables de entorno
+SERVICES_TABLE = os.environ.get('SERVICES_TABLE', 'Services')
+CHECKS_TABLE = os.environ.get('CHECKS_TABLE', 'HealthChecks')
+ALERTS_TABLE = os.environ.get('ALERTS_TABLE', 'Alerts')
+SNS_TOPIC_ARN = os.environ.get('SNS_TOPIC_ARN', '')
 
 def lambda_handler(event, context):
     """
@@ -40,11 +43,22 @@ def lambda_handler(event, context):
             
             results.append(check_result)
         
+        # Convertir Decimal a float para JSON serialization
+        json_results = []
+        for result in results:
+            json_result = {}
+            for key, value in result.items():
+                if isinstance(value, Decimal):
+                    json_result[key] = float(value)
+                else:
+                    json_result[key] = value
+            json_results.append(json_result)
+        
         return {
             'statusCode': 200,
             'body': json.dumps({
-                'message': f'Health checks completados: {len(results)}',
-                'results': results
+                'message': f'Health checks completados: {len(json_results)}',
+                'results': json_results
             })
         }
     except Exception as e:
@@ -70,7 +84,6 @@ def perform_health_check(service: Dict[str, Any]) -> Dict[str, Any]:
     
     result = {
         'serviceId': service['serviceId'],
-        'url': url,
         'timestamp': int(time.time()),
         'checkedAt': datetime.utcnow().isoformat()
     }
@@ -88,7 +101,7 @@ def perform_health_check(service: Dict[str, Any]) -> Dict[str, Any]:
             result.update({
                 'status': 'up' if status_code == expected_status else 'down',
                 'httpStatus': status_code,
-                'responseTime': round(response_time, 2),
+                'responseTime': Decimal(str(round(response_time, 2))),  # Convertir a Decimal para DynamoDB
                 'error': None
             })
             
@@ -119,7 +132,18 @@ def perform_health_check(service: Dict[str, Any]) -> Dict[str, Any]:
 def save_health_check(check_result: Dict[str, Any]):
     """Guardar resultado del health check en DynamoDB"""
     table = dynamodb.Table(CHECKS_TABLE)
-    table.put_item(Item=check_result)
+    
+    # Convertir valores numéricos a Decimal para DynamoDB
+    item = {}
+    for key, value in check_result.items():
+        if isinstance(value, float):
+            item[key] = Decimal(str(value))
+        elif isinstance(value, int) and key == 'timestamp':
+            item[key] = value  # timestamp puede ser int
+        else:
+            item[key] = value
+    
+    table.put_item(Item=item)
 
 def send_alert_if_needed(service: Dict[str, Any], check_result: Dict[str, Any]):
     """

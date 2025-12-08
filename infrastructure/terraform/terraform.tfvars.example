@@ -26,3 +26,14 @@ ec2_key_name = "devops-key"  # Cambia esto por uno de tus Key Pairs existentes
 # Email para recibir alertas SNS cuando un servicio esté caído
 alert_email = "dilsabarrientos@gmail.com"
 
+# ============================================
+# VARIABLES OPCIONALES
+# ============================================
+
+# Dominio personalizado para Route 53 (opcional)
+# Si lo dejas vacío (""), no se configurará Route 53
+# Ejemplo: "healthcheck-cloud.com"
+# IMPORTANTE: Debes tener el dominio registrado en AWS Route 53 o transferirlo
+# Si usas un dominio externo, debes configurar los name servers manualmente
+domain_name = ""  # Deja vacío si no tienes dominio o no quieres usar Route 53
+

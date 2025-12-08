@@ -59,6 +59,16 @@ out/
 *.pem
 *.key
 
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+terraform.tfvars
+terraform.tfvars.backup
+*.tfplan
+terraform-outputs.json
+
 # Logs
 *.log
 logs/

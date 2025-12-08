@@ -13,41 +13,73 @@ resource "aws_api_gateway_resource" "api" {
   path_part   = "api"
 }
 
-resource "aws_api_gateway_resource" "services" {
+# Proxy catch-all para todas las rutas bajo /api
+resource "aws_api_gateway_resource" "proxy" {
   rest_api_id = aws_api_gateway_rest_api.api.id
   parent_id   = aws_api_gateway_resource.api.id
-  path_part   = "services"
+  path_part   = "{proxy+}"
 }
 
-resource "aws_api_gateway_method" "services" {
+resource "aws_api_gateway_method" "proxy" {
   rest_api_id   = aws_api_gateway_rest_api.api.id
-  resource_id   = aws_api_gateway_resource.services.id
+  resource_id   = aws_api_gateway_resource.proxy.id
+  http_method   = "ANY"
+  authorization = "NONE"
+  
+  request_parameters = {
+    "method.request.path.proxy" = true
+  }
+}
+
+resource "aws_api_gateway_integration" "proxy" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.proxy.id
+  http_method = aws_api_gateway_method.proxy.http_method
+
+  type                    = "HTTP_PROXY"
+  integration_http_method = "ANY"
+  uri                     = "${var.ec2_endpoint}/api/{proxy}"
+  
+  request_parameters = {
+    "integration.request.path.proxy" = "method.request.path.proxy"
+  }
+}
+
+# También método para el recurso /api directamente
+resource "aws_api_gateway_method" "api" {
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  resource_id   = aws_api_gateway_resource.api.id
   http_method   = "ANY"
   authorization = "NONE"
 }
 
-resource "aws_api_gateway_integration" "services" {
+resource "aws_api_gateway_integration" "api" {
   rest_api_id = aws_api_gateway_rest_api.api.id
-  resource_id = aws_api_gateway_resource.services.id
-  http_method = aws_api_gateway_method.services.http_method
+  resource_id = aws_api_gateway_resource.api.id
+  http_method = aws_api_gateway_method.api.http_method
 
   type                    = "HTTP_PROXY"
   integration_http_method = "ANY"
-  uri                     = "${var.ec2_endpoint}/api/services"
+  uri                     = var.ec2_endpoint
 }
 
 resource "aws_api_gateway_deployment" "api" {
   rest_api_id = aws_api_gateway_rest_api.api.id
 
   depends_on = [
-    aws_api_gateway_integration.services
+    aws_api_gateway_integration.proxy,
+    aws_api_gateway_integration.api
   ]
 
   triggers = {
     redeployment = sha1(jsonencode([
-      aws_api_gateway_resource.services.id,
-      aws_api_gateway_method.services.id,
-      aws_api_gateway_integration.services.id,
+      aws_api_gateway_resource.proxy.id,
+      aws_api_gateway_method.proxy.id,
+      aws_api_gateway_integration.proxy.id,
+      aws_api_gateway_resource.api.id,
+      aws_api_gateway_method.api.id,
+      aws_api_gateway_integration.api.id,
+      timestamp()
     ]))
   }
 

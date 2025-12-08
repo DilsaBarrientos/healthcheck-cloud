@@ -27,7 +27,7 @@ cat <<EOF
     "hosts": ["${EC2_IP}"],
     "vars": {
       "ansible_user": "ec2-user",
-      "ansible_ssh_private_key_file": "~/.ssh/healthcheck.pem",
+      "ansible_ssh_private_key_file": "~/.ssh/devops-key.pem",
       "ec2_instance_id": "${EC2_INSTANCE_ID}",
       "s3_bucket": "${S3_BUCKET}",
       "api_gateway_url": "${API_GATEWAY_URL}"

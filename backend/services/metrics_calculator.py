@@ -58,3 +58,4 @@ class MetricsCalculator:
             'recentAverageLatency': MetricsCalculator.calculate_average_latency(recent_checks)
         }
 
+

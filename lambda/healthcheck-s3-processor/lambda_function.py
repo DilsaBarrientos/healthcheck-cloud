@@ -87,3 +87,4 @@ def log_s3_event(bucket_name, object_key, event_name):
     }
     print(f"S3 Event logged: {json.dumps(log_entry)}")
 
+

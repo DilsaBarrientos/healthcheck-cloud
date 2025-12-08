@@ -86,6 +86,18 @@ module "sns" {
   email        = var.alert_email
 }
 
+# CloudWatch - Monitoreo y Alarmas
+module "cloudwatch" {
+  source = "./modules/cloudwatch"
+  
+  project_name         = var.project_name
+  api_gateway_id       = module.api_gateway.rest_api_id
+  lambda_function_names = module.lambda.function_names
+  ec2_instance_id      = module.ec2.instance_id
+  dynamodb_table_names = module.dynamodb.table_names
+  sns_topic_arn        = module.sns.topic_arn
+}
+
 # Ejecutar Ansible automáticamente después de crear la infraestructura
 resource "null_resource" "ansible_deploy" {
   depends_on = [
@@ -95,9 +107,22 @@ resource "null_resource" "ansible_deploy" {
     module.dynamodb
   ]
 
-  # Esperar a que EC2 esté listo
+  # Esperar a que EC2 esté listo y accesible por SSH
   provisioner "local-exec" {
-    command = "sleep 30"
+    command = <<-EOT
+      EC2_IP="${module.ec2.public_ip}"
+      echo "Esperando a que EC2 esté accesible por SSH..."
+      for i in {1..60}; do
+        if ssh -i ~/.ssh/devops-key.pem -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes ec2-user@$${EC2_IP} echo "OK" 2>/dev/null; then
+          echo "EC2 está accesible!"
+          exit 0
+        fi
+        echo "Intento $i/60: Esperando 10 segundos..."
+        sleep 10
+      done
+      echo "Error: EC2 no está accesible después de 10 minutos"
+      exit 1
+    EOT
   }
 
   # Exportar outputs de Terraform
@@ -112,6 +137,8 @@ resource "null_resource" "ansible_deploy" {
     working_dir = "${path.module}/../ansible"
     environment = {
       ANSIBLE_HOST_KEY_CHECKING = "False"
+      TERRAFORM_DIR             = "${path.module}"
+      FRONTEND_DIR              = "${path.module}/../../frontend"
     }
   }
 

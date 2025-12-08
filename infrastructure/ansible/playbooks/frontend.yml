@@ -3,8 +3,13 @@
   hosts: localhost
   connection: local
   vars:
-    terraform_dir: "../terraform"
-    frontend_dir: "../../frontend"
+    # Calcular rutas basándose en el directorio del playbook
+    # playbook_dir es infrastructure/ansible/playbooks
+    # Necesitamos ir 3 niveles arriba para llegar a la raíz del proyecto
+    project_root: "{{ playbook_dir | dirname | dirname | dirname }}"
+    # Usar ruta absoluta calculada, ignorar variable de entorno si es relativa
+    terraform_dir: "{{ project_root + '/infrastructure/terraform' }}"
+    frontend_dir: "{{ project_root + '/frontend' }}"
 
   tasks:
     - name: Verificar que terraform-outputs.json existe
@@ -26,14 +31,29 @@
         dest: "{{ terraform_dir }}/terraform-outputs.json"
       when: not outputs_file.stat.exists
 
-    - name: Leer valores de outputs
-      set_fact:
-        terraform_outputs_json: "{{ lookup('file', terraform_dir + '/terraform-outputs.json') | from_json }}"
+    - name: Leer archivo de outputs
+      slurp:
+        src: "{{ terraform_dir }}/terraform-outputs.json"
+      register: outputs_file_content
 
-    - name: Extraer valores de outputs
+    - name: Parsear JSON de outputs
       set_fact:
-        s3_bucket: "{{ terraform_outputs_json.s3_bucket_name.value }}"
-        api_gateway_url: "{{ terraform_outputs_json.api_gateway_url.value }}"
+        terraform_outputs_json: "{{ outputs_file_content.content | b64decode | from_json }}"
+
+    - name: Extraer s3_bucket usando jq (más confiable)
+      command: jq -r '.s3_bucket_name.value' "{{ terraform_dir }}/terraform-outputs.json"
+      register: s3_bucket_result
+      changed_when: false
+
+    - name: Extraer api_gateway_url usando jq
+      command: jq -r '.api_gateway_url.value' "{{ terraform_dir }}/terraform-outputs.json"
+      register: api_gateway_result
+      changed_when: false
+
+    - name: Asignar valores extraídos
+      set_fact:
+        s3_bucket: "{{ s3_bucket_result.stdout }}"
+        api_gateway_url: "{{ api_gateway_result.stdout }}"
 
     - name: Verificar que npm está instalado
       command: npm --version
@@ -55,25 +75,74 @@
           when: ansible_os_family == "RedHat"
       when: npm_check.rc != 0
 
+    - name: Verificar que el directorio frontend existe
+      stat:
+        path: "{{ frontend_dir }}"
+      register: frontend_dir_stat
+
+    - name: Debug - Mostrar rutas calculadas
+      debug:
+        msg:
+          - "playbook_dir: {{ playbook_dir }}"
+          - "project_root: {{ project_root }}"
+          - "TERRAFORM_DIR env: {{ lookup('env', 'TERRAFORM_DIR') }}"
+          - "FRONTEND_DIR env: {{ lookup('env', 'FRONTEND_DIR') }}"
+          - "frontend_dir calculado: {{ frontend_dir }}"
+          - "frontend_dir existe: {{ frontend_dir_stat.stat.exists }}"
+
+    - name: Crear directorio frontend si no existe
+      file:
+        path: "{{ frontend_dir }}"
+        state: directory
+      when: not frontend_dir_stat.stat.exists
+
     - name: Crear archivo .env.production
       copy:
         content: |
-          REACT_APP_API_URL={{ api_gateway_url }}
+          REACT_APP_API_URL={{ api_gateway_url | regex_replace('/api$', '') }}
         dest: "{{ frontend_dir }}/.env.production"
 
-    - name: Limpiar node_modules si hay problemas de permisos
+    - name: Verificar si node_modules existe
+      stat:
+        path: "{{ frontend_dir }}/node_modules"
+      register: node_modules_stat
+
+    - name: Intentar eliminar node_modules (sin sudo)
       file:
         path: "{{ frontend_dir }}/node_modules"
         state: absent
-      when: ansible_check_mode == false
+      when: node_modules_stat.stat.exists
       ignore_errors: yes
+      register: remove_result
 
-    - name: Instalar dependencias de Node.js
-      command: npm install
+    - name: Advertir si node_modules no se pudo eliminar
+      debug:
+        msg: |
+          ⚠️  ADVERTENCIA: No se pudo eliminar node_modules (probablemente pertenece a root).
+          El playbook intentará continuar, pero si falla npm install, ejecuta:
+          sudo rm -rf {{ frontend_dir }}/node_modules
+      when: node_modules_stat.stat.exists and (remove_result.failed | default(false))
+
+    - name: Instalar dependencias de Node.js (intentará sobrescribir si es necesario)
+      command: npm install --force
       args:
         chdir: "{{ frontend_dir }}"
       environment:
         NODE_ENV: production
+      become: no
+      ignore_errors: yes
+      register: npm_install_result
+
+    - name: Fallar con mensaje claro si npm install falló por permisos
+      fail:
+        msg: |
+          ❌ Error: npm install falló por problemas de permisos.
+          
+          Por favor ejecuta manualmente:
+          sudo rm -rf {{ frontend_dir }}/node_modules
+          
+          Luego vuelve a ejecutar: terraform apply -replace=null_resource.ansible_deploy
+      when: npm_install_result.rc != 0 and ("EACCES" in npm_install_result.stderr | default("") or "permission denied" in npm_install_result.stderr | default(""))
 
     - name: Ejecutar build del frontend
       command: npm run build

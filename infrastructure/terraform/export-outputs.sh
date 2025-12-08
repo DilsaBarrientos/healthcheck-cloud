@@ -9,3 +9,4 @@ terraform output -json > terraform-outputs.json
 echo "Outputs exportados a terraform-outputs.json"
 cat terraform-outputs.json
 
+

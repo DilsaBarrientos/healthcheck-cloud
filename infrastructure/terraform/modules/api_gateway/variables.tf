@@ -6,3 +6,4 @@ variable "ec2_endpoint" {
   type = string
 }
 
+

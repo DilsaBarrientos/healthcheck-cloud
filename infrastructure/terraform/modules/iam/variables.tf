@@ -10,3 +10,4 @@ variable "dynamodb_tables" {
   })
 }
 
+

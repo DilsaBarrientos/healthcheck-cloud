@@ -50,3 +50,4 @@ aws dynamodb list-tables --endpoint-url $ENDPOINT_URL
 echo ""
 echo "Setup completado!"
 
+
